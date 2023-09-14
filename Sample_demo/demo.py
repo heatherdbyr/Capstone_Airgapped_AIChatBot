@@ -60,8 +60,8 @@ def elasticSearch(userInput):
 def checkRelevancy(userInput): 
 
     relevanceTemplate = f"""
-        You are helpful Microsoft Outlook Assistant. Answer Question with only one word answer either TRUE or FALSE. 
-        Question: is this user input '{userInput}' relevant to microsoft outlook (TRUE/FALSE)? 
+        Answer Question with only one word answer either TRUE or FALSE. 
+        Question: is this user input '{userInput}' relavant to microsoft outlook (TRUE/FALSE)? 
     """
     output = replicate.run(
         MODEL_NAME,
@@ -85,7 +85,7 @@ def checkRelevancy(userInput):
 def isFollowUp(userInput, history): 
 
     followUpTemplate = f"""
-        You are helpful Microsoft Outlook Assistant. Answer Question with only a one word answer either TRUE or FALSE. If you don't know answer with FALSE.
+        Answer Question with only a one word answer either TRUE or FALSE. If you don't know answer with FALSE.
         This history of conversation: '{history}'
         Question: is this user input '{userInput}' a follow up question of their last question or assistant answer(TRUE/FALSE)? 
     """
