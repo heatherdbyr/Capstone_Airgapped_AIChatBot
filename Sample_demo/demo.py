@@ -5,8 +5,8 @@ import time
 import os
 
 # Set the environment variable
-os.environ['REPLICATE_API_TOKEN'] = ''
-API_URL = ""
+os.environ['REPLICATE_API_TOKEN'] = 'r8_X1qWO35dTBKsIN7GQbSrbuWVBu89Onf1c8SGt'
+API_URL = "https://ln9afaz9wxel05le.us-east-1.aws.endpoints.huggingface.cloud/"
 #Note that varibles above are empty. If you want to run this I'll put the keys on discord
 
 MODEL_NAME = "meta/llama-2-7b-chat:8e6975e5ed6174911a6ff3d60540dfd4844201974602551e10e9e87ab143d81e"
@@ -16,10 +16,13 @@ headers = {
 	"Content-Type": "application/json"
 }
 
+CURR_DOC = ""
+link = ""
 
-#Current document
-CURR_DOCUMENT = ""
-
+def display_chat_history(messages):
+    for message in messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
 
 def elasticSearch(userInput):
     ELASTIC_PASSWORD = "PPU90SH8Bt6kF3feQ3YpCqmM"
@@ -45,14 +48,11 @@ def elasticSearch(userInput):
     # Execute the search
     response = es.search(index="sample_db", body=query)
 
-    global link
-    link = response['hits']['hits'][0]['_source']['Link']
-
-
     # Check if any results were returned
     if response['hits']['total']['value'] > 0:
-        CURR_DOCUMENT = response['hits']['hits'][0]['_source']
-        return CURR_DOCUMENT
+        CURR_DOC = response['hits']['hits'][0]['_source']
+        link = response['hits']['hits'][0]['_source']['Link']
+        return CURR_DOC, link
     else:
         return None
 
@@ -119,7 +119,7 @@ def chatCompletion(userInput, history):
             #if so check it is a follow up question
             if isFollowUp(userInput, history):
                 #if so make use case document the current document
-                document = CURR_DOCUMENT
+                document = CURR_DOC
         else:
             response = irrelevent
             return response 
@@ -134,6 +134,8 @@ def chatCompletion(userInput, history):
     if elasticSearch(userInput) is None:
         response = searchErr
         return response 
+    else:
+        document = CURR_DOC
 
     template = f"""
         You are helpful Microsoft Outlook Assistant. Answer Question with only the information below. Answer the Question only don't state what you are.
@@ -182,7 +184,8 @@ def main():
                 message_placeholder.markdown(init_response + "▌")
             message_placeholder.markdown(init_response)
         st.session_state.messages.append({"role": "assistant", "content": init_response})
-
+    else:
+        display_chat_history(st.session_state.messages)
 
     if prompt := st.chat_input("Enter query"):
         # Add user message to chat history
@@ -193,6 +196,7 @@ def main():
         
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
+
             full_response = ""
             assistant_response = chatCompletion(prompt, st.session_state.messages)
             # Simulate stream of response with milliseconds delay
