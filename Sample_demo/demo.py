@@ -1,4 +1,6 @@
 from elasticsearch import Elasticsearch
+from elasticsearch_dsl import Search
+from dateutil.parser import parse
 import replicate 
 import streamlit as st 
 import time
@@ -16,8 +18,7 @@ headers = {
 	"Content-Type": "application/json"
 }
 
-CURR_DOC = ""
-link = ""
+CURR_DOC = []
 
 def display_chat_history(messages):
     for message in messages:
@@ -25,62 +26,98 @@ def display_chat_history(messages):
             st.markdown(message["content"])
 
 def elasticSearch(userInput):
-    ELASTIC_PASSWORD = "PPU90SH8Bt6kF3feQ3YpCqmM"
+    ELASTIC_PASSWORD = "xel8PSGj3Bofb8vuR0FQK2NS"
 
-    CLOUD_ID = "First_Deployment:dXMtY2VudHJhbDEuZ2NwLmNsb3VkLmVzLmlvOjQ0MyQ1ZDc5MWEyZTE3Mzc0MGQwOThmOTQ1Yjc2OWU5MzhkZCQ5NWI0NDY4YTAyM2Q0YmM0YmFlOWEzNDdhNjA1OGFkNA=="
+    CLOUD_ID = "Test_Deployment:dXMtY2VudHJhbDEuZ2NwLmNsb3VkLmVzLmlvOjQ0MyQ0MzJmODIyY2RmZDI0MWU1ODY5OTFiMGJiZGI1YjgzNyRhNjE0MzU1M2FhM2U0M2NhYjIwOTAyOTdhNWM2N2EyMA=="
+
     es = Elasticsearch(
         cloud_id=CLOUD_ID,
         basic_auth=("elastic", ELASTIC_PASSWORD)
     )
 
-    # Define the search query
-    query = {
-        "query": {
-            "multi_match": {
-                "query": userInput,
-                "fields": ["Title", "content.subtitle.sub_title", "content.subtitle.sub_content"],
-                "type": "best_fields"
+    try:
+        parsed_date = parse(userInput, fuzzy=True)
+        if parsed_date.year is None or parsed_date.month is None or parsed_date.day is None:
+            raise ValueError("Invalid date")
+        # If a date was successfully parsed, create a date-based query
+        date_query = {
+            "term": {
+                "date": parsed_date.strftime("%Y-%m-%d")
             }
-        },
-        "size": 1
+        }
+    except ValueError:
+        # If parsing as a date fails, treat it as a regular text query
+        date_query = None
+
+    text_query = {
+        "multi_match": {
+            "query": userInput,
+            "fields": ["authors", "headline", "category", "short_description", "link"],
+            "type": "best_fields"
+        }
     }
 
-    # Execute the search
-    response = es.search(index="sample_db", body=query)
+    s = Search(using=es, index="search-llama2")
+    if date_query:
+        s = s.query(date_query)
+    else:
+        s = s.query(text_query)
+    responses = s.execute()
+
+    response_list = []
+    response_counter = 0
+    for hit in responses:
+        if response_counter >= 10:
+            break
+        response_counter += 1
+
+        response = {"headline": hit.headline, "date": hit.date, "link": hit.link, "short_description": hit.short_description, "category": hit.category}
+
+        if hasattr(hit, 'author'):
+            response['author'] = hit.author
+        elif hasattr(hit, 'authors'):
+            response['authors'] = hit.authors
+
+        response_list.append(response)
+
+        print("Relevant Article Headline:", hit.headline)
+        print("Relevant Article Date:", hit.date)
+        print("Relevant Article Link:", hit.link)
+        print("Relevant Article Short Description:", hit.short_description)
+        print("\n")
 
     # Check if any results were returned
-    if response['hits']['total']['value'] > 0:
-        CURR_DOC = response['hits']['hits'][0]['_source']
-        link = response['hits']['hits'][0]['_source']['Link']
-        return CURR_DOC, link
+    if len(response_list) > 0:
+        CURR_DOC = response_list
+        return response_list
     else:
         return None
 
 
-def checkRelevancy(userInput): 
+# def checkRelevancy(userInput): 
 
-    relevanceTemplate = f"""
-        Answer Question with only one word answer either TRUE or FALSE. 
-        Question: is this user input '{userInput}' relavant to microsoft outlook (TRUE/FALSE)? 
-    """
-    output = replicate.run(
-        MODEL_NAME,
-        input={"prompt": relevanceTemplate,
-        "temperature":0.75,
-           "max_new_tokens":10000,
-           "max_length":10000
-        }
-    )
+#     relevanceTemplate = f"""
+#         Answer Question with only one word answer either TRUE or FALSE. 
+#         Question: is this user input '{userInput}' relavant to microsoft outlook (TRUE/FALSE)? 
+#     """
+#     output = replicate.run(
+#         MODEL_NAME,
+#         input={"prompt": relevanceTemplate,
+#         "temperature":0.75,
+#            "max_new_tokens":10000,
+#            "max_length":10000
+#         }
+#     )
     
-    response = ''.join(output)
+#     response = ''.join(output)
 
 
-    print(response)
+#     print(response)
 
-    if "TRUE" in response:
-        return True
-    else:
-        return False
+#     if "TRUE" in response:
+#         return True
+#     else:
+#         return False
     
 def isFollowUp(userInput, history): 
 
@@ -113,37 +150,36 @@ def chatCompletion(userInput, history):
     response = ""
 
     #Check if the conversation has history
-    if len(history) > 1:
-        #Check if input is relavence to mirosoft outlook
-        if checkRelevancy(userInput) == True:
-            #if so check it is a follow up question
-            if isFollowUp(userInput, history):
-                #if so make use case document the current document
-                document = CURR_DOC
-        else:
-            response = irrelevent
-            return response 
-    else: 
-        #Check if input is relavence to mirosoft outlook
-        if checkRelevancy() == False: 
-            response = irrelevent
-            return response 
+    # if len(history) > 1:
+    #     #Check if input is relavence to mirosoft outlook
+    #     # if checkRelevancy(userInput) == True:
+    #         #if so check it is a follow up question
+    #         if isFollowUp(userInput, history):
+    #             #if so make use case document the current document
+    #             response_list = CURR_DOC
+    #     # else:
+    #     #     response = irrelevent
+    #     #     return response 
+    # else: 
+    #     #Check if input is relavence to mirosoft outlook
+    #     # if checkRelevancy() == False: 
+    #     #     response = irrelevent
+    #     #     return response 
+    #     print('history nil')
     
 
     #Check if Search was unsuccessfull
-    if elasticSearch(userInput) is None:
-        response = searchErr
-        return response 
-    else:
-        document = CURR_DOC
+    response_list = elasticSearch(userInput)
+    if response_list is None:
+        return searchErr
 
     template = f"""
-        You are helpful Microsoft Outlook Assistant. Answer Question with only the information below. Answer the Question only don't state what you are.
+        You are a search assistant with access to the Huffpost archives from 2012 to 2022.
         Answer question very briefly.
         Answer question with the information below.
         This is history of the conversation: '{history}'
-        This the article json document: '{document}'
-        This is the link to provide at the end of answer: '{link}'
+        Here is a list of all the possible responses to the users question: '{response_list}'
+        You must answer the question with at least one of the responses above, and you must send the provided link when mentioning an article.
         Question: '{userInput}'
     """
 
@@ -176,7 +212,7 @@ def main():
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
             init_response = ""
-            assistant_intro = "Hi I am your Microsoft support AI assistant\n How may I assist you today?"
+            assistant_intro = "Hi I am your Huffpost AI assistant\n How may I assist you today?"
             for chunk in assistant_intro.split():
                 init_response += chunk + " "
                 time.sleep(0.09)
