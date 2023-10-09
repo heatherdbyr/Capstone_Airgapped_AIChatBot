@@ -122,7 +122,7 @@ def chatCompletion(userInput, history):
     response = ""
 
   #  Check if the conversation has history
-    if len(history) > 1:
+    if len(history) > 2:
         #Check if the user input is a follow up question
         if isFollowUp(userInput, history):
             #if so make use case document the current document
