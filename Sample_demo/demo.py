@@ -89,35 +89,9 @@ def elasticSearch(userInput):
     # Check if any results were returned
     if len(response_list) > 0:
         CURR_DOC = response_list
-        return response_list
+        return CURR_DOC
     else:
         return None
-
-
-# def checkRelevancy(userInput): 
-
-#     relevanceTemplate = f"""
-#         Answer Question with only one word answer either TRUE or FALSE. 
-#         Question: is this user input '{userInput}' relavant to microsoft outlook (TRUE/FALSE)? 
-#     """
-#     output = replicate.run(
-#         MODEL_NAME,
-#         input={"prompt": relevanceTemplate,
-#         "temperature":0.75,
-#            "max_new_tokens":10000,
-#            "max_length":10000
-#         }
-#     )
-    
-#     response = ''.join(output)
-
-
-#     print(response)
-
-#     if "TRUE" in response:
-#         return True
-#     else:
-#         return False
     
 def isFollowUp(userInput, history): 
 
@@ -144,52 +118,52 @@ def isFollowUp(userInput, history):
 
 def chatCompletion(userInput, history): 
     #use case document
-    document = ""
-    irrelevent = "Unfortunately, I am an Microsoft Outlook assistant \n I can only answer questions or queries that pretain to Microsoft Outlook :("
-    searchErr = "Unfortunately, I could not find anything related to your query within our database \n as this is only a sample database and is very small"
+    searchErr = "Sorry I couldn't find any articles related to your query. Please try again."
     response = ""
 
-    #Check if the conversation has history
-    # if len(history) > 1:
-    #     #Check if input is relavence to mirosoft outlook
-    #     # if checkRelevancy(userInput) == True:
-    #         #if so check it is a follow up question
-    #         if isFollowUp(userInput, history):
-    #             #if so make use case document the current document
-    #             response_list = CURR_DOC
-    #     # else:
-    #     #     response = irrelevent
-    #     #     return response 
-    # else: 
-    #     #Check if input is relavence to mirosoft outlook
-    #     # if checkRelevancy() == False: 
-    #     #     response = irrelevent
-    #     #     return response 
-    #     print('history nil')
-    
+  #  Check if the conversation has history
+    if len(history) > 1:
+        #Check if the user input is a follow up question
+        if isFollowUp(userInput, history):
+            #if so make use case document the current document
+            response_list = CURR_DOC
+        else:
+            #if not make a new search
+            response_list = elasticSearch(userInput)
+    else:
+        response_list = elasticSearch(userInput)
 
-    #Check if Search was unsuccessfull
-    response_list = elasticSearch(userInput)
     if response_list is None:
         return searchErr
 
+    # Create a list of article titles and links for a more conversational response
+    article_responses = []
+    for idx, article in enumerate(response_list, start=1):
+        article_response = f"{idx}. [{article['headline']}]({article['link']}) - {article['short_description']} - {article['date']}"
+        article_responses.append(article_response)
+
+    # Join the article responses with line breaks
+    article_list = "\n".join(article_responses)
+
     template = f"""
-        You are a search assistant with access to the Huffpost archives from 2012 to 2022.
-        Answer question very briefly.
-        Answer question with the information below.
-        This is history of the conversation: '{history}'
-        Here is a list of all the possible responses to the users question: '{response_list}'
-        You must answer the question with at least one of the responses above, and you must send the provided link when mentioning an article.
-        Question: '{userInput}'
+    [SYSTEM] You are a search assistant with access to the HuffPost archives from 2012 to 2022.
+    [SYSTEM] This is the history of our conversation so far: '{history}'
+    [SYSTEM] Latest User Input: '{userInput}'
+
+    [SYSTEM] Here are some relevant articles related to the latest input:
+    {article_list}
+
+    [SYSTEM] Provide the above info to the user, ENSURE you give the links and maybe give a brief description of each article. 
+    [SYSTEM] Please start a new line for each new article.
     """
 
     output = replicate.run(
         MODEL_NAME,
         input={"prompt": template,
-            "temperature":0.75,
-            "max_new_tokens":4096,
-            "max_length":4096
-        }
+            "temperature": 0.75,
+            "max_new_tokens": 4096,
+            "max_length": 4096
+            }
     )
 
     for item in output:
@@ -231,20 +205,17 @@ def main():
             st.markdown(prompt)
         
         with st.chat_message("assistant"):
-            message_placeholder = st.empty()
-
-            full_response = ""
-            assistant_response = chatCompletion(prompt, st.session_state.messages)
-            # Simulate stream of response with milliseconds delay
-            for chunk in assistant_response.split():
-                full_response += chunk + " "
-                time.sleep(0.05)
-                # Add a blinking cursor to simulate typing
-                message_placeholder.markdown(full_response + "▌")
-            message_placeholder.markdown(full_response)
+            full_response = chatCompletion(prompt, st.session_state.messages)
+            
+            # Split the response by '\n' to handle line breaks
+            response_paragraphs = full_response.split('\n')
+            
+            # Display each paragraph with a line break
+            for paragraph in response_paragraphs:
+                st.write(paragraph)
+            
         # Add assistant response to chat history
         st.session_state.messages.append({"role": "assistant", "content": full_response})
-
 
 if __name__ == "__main__":
     main()
