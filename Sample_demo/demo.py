@@ -9,23 +9,25 @@ import os
 # Set the environment variable
 os.environ['REPLICATE_API_TOKEN'] = 'r8_X1qWO35dTBKsIN7GQbSrbuWVBu89Onf1c8SGt'
 API_URL = "https://ln9afaz9wxel05le.us-east-1.aws.endpoints.huggingface.cloud/"
-#Note that varibles above are empty. If you want to run this I'll put the keys on discord
 
 MODEL_NAME = "meta/llama-2-7b-chat:8e6975e5ed6174911a6ff3d60540dfd4844201974602551e10e9e87ab143d81e"
+
+CURR_DOC = []
 
 headers = {
 	"Authorization": "Bearer TeWAqUDMIdoqDyPtnisCRPddnmdPBhScjqWuIWkQtvyOuPIqBeRtpycLbXBrKFldVGLrTKEjVGIkbHzjBkmqYMoHjjWTgoBzhCBFaeSIACuAdHxvGLBiXgYJVzidmbKY",
 	"Content-Type": "application/json"
 }
 
-CURR_DOC = []
 
 def display_chat_history(messages):
     for message in messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
+
 def elasticSearch(userInput):
+    global CURR_DOC
     ELASTIC_PASSWORD = "xel8PSGj3Bofb8vuR0FQK2NS"
 
     CLOUD_ID = "Test_Deployment:dXMtY2VudHJhbDEuZ2NwLmNsb3VkLmVzLmlvOjQ0MyQ0MzJmODIyY2RmZDI0MWU1ODY5OTFiMGJiZGI1YjgzNyRhNjE0MzU1M2FhM2U0M2NhYjIwOTAyOTdhNWM2N2EyMA=="
@@ -57,11 +59,21 @@ def elasticSearch(userInput):
         }
     }
 
-    s = Search(using=es, index="search-llama2")
+    # Create a bool query to combine the date and text queries
+    query = {
+        "bool": {
+            "should": []
+        }
+    }
+
     if date_query:
-        s = s.query(date_query)
-    else:
-        s = s.query(text_query)
+        query["bool"]["should"].append(date_query)
+        print('date')
+
+    query["bool"]["should"].append(text_query)
+
+    s = Search(using=es, index="search-llama2")
+    s = s.query(query)
     responses = s.execute()
 
     response_list = []
@@ -80,11 +92,11 @@ def elasticSearch(userInput):
 
         response_list.append(response)
 
-        print("Relevant Article Headline:", hit.headline)
-        print("Relevant Article Date:", hit.date)
-        print("Relevant Article Link:", hit.link)
-        print("Relevant Article Short Description:", hit.short_description)
-        print("\n")
+        # print("Relevant Article Headline:", hit.headline)
+        # print("Relevant Article Date:", hit.date)
+        # print("Relevant Article Link:", hit.link)
+        # print("Relevant Article Short Description:", hit.short_description)
+        # print("\n")
 
     # Check if any results were returned
     if len(response_list) > 0:
@@ -96,9 +108,10 @@ def elasticSearch(userInput):
 def isFollowUp(userInput, history): 
 
     followUpTemplate = f"""
-        Answer Question with only a one word answer either TRUE or FALSE. If you don't know answer with FALSE.
-        This history of conversation: '{history}'
-        Question: is this user input '{userInput}' a follow up question of their last question or assistant answer(TRUE/FALSE)? 
+        [SYSTEM] Answer Question with only a one word answer either TRUE or FALSE. If you don't know answer with FALSE.
+        [SYSTEM] This history of conversation: '{history}'
+        [SYSTEM] User input: '{userInput}'
+        [SYSTEM] Is this user input a follow up question of the user's last question or assistant's response? 
     """
     output = replicate.run(
         MODEL_NAME,
@@ -109,6 +122,7 @@ def isFollowUp(userInput, history):
         }
     )
     response = ''.join(output)
+    print(response)
 
     if "TRUE" in response:
         return True
@@ -127,11 +141,15 @@ def chatCompletion(userInput, history):
         if isFollowUp(userInput, history):
             #if so make use case document the current document
             response_list = CURR_DOC
+            print(response_list)
         else:
             #if not make a new search
             response_list = elasticSearch(userInput)
+
     else:
         response_list = elasticSearch(userInput)
+        print(response_list)
+        print(CURR_DOC)
 
     if response_list is None:
         return searchErr
@@ -139,7 +157,14 @@ def chatCompletion(userInput, history):
     # Create a list of article titles and links for a more conversational response
     article_responses = []
     for idx, article in enumerate(response_list, start=1):
-        article_response = f"{idx}. [{article['headline']}]({article['link']}) - {article['short_description']} - {article['date']}"
+        if 'author' in article:
+            author_str = f" by {article['author']}"
+        elif 'authors' in article:
+            author_str = f" by {article['authors']}"
+        else:
+            author_str = ""
+
+        article_response = f"{idx}. [{article['headline']}]({article['link']}){author_str} - {article['short_description']} - {article['date']}"
         article_responses.append(article_response)
 
     # Join the article responses with line breaks
@@ -153,7 +178,8 @@ def chatCompletion(userInput, history):
     [SYSTEM] Here are some relevant articles related to the latest input:
     {article_list}
 
-    [SYSTEM] Provide the above info to the user, ENSURE you give the links and maybe give a brief description of each article. 
+    [SYSTEM] Check the above article_list, and if they are relevant to the userInput, then provide the info to the user, ENSURE you give the links and maybe give a brief description of each article. 
+    [SYSTEM] If you don't know the answer to a question, DO NOT make anything up, just say you don't know.
     [SYSTEM] Please start a new line for each new article.
     """
 
@@ -161,8 +187,8 @@ def chatCompletion(userInput, history):
         MODEL_NAME,
         input={"prompt": template,
             "temperature": 0.75,
-            "max_new_tokens": 4096,
-            "max_length": 4096
+            "max_new_tokens": 8000,
+            "max_length": 8000
             }
     )
 
