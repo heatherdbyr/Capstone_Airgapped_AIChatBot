@@ -1,0 +1,4 @@
+pip install langchain
+pip install elasticsearch
+pip install sentence-transformers
+pip install llama-cpp-python
