@@ -1,3 +1,4 @@
 elasticsearch
+elasticsearch_dsl
 streamlit
 replicate

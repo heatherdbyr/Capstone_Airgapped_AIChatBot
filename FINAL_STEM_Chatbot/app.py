@@ -33,6 +33,7 @@ main_memory = ConversationBufferMemory()
 
 
 #LLM configurations
+#model should be in the same directory as app.py
 model = "mistral-7b-instruct-v0.1.Q8_0.gguf"
 callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
 n_gpu_layers = 62
