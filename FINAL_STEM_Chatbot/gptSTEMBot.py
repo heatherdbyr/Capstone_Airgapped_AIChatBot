@@ -14,7 +14,7 @@ import time
 """
 
 **This Version is using the Chatgpt API for the gpt-3.5-turbo model 
-**Note This model would be roughly equivalent to fine tuned  Llama 2 70B model
+**Note This model would be roughly equivalent to a fine tuned Llama 2 70B model
 **To run this insert your own API Key from Open AI and have all the dependencies.
 
 """
