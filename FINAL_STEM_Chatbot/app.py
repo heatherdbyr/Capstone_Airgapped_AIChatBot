@@ -10,6 +10,18 @@ from elasticsearch import Elasticsearch
 import gradio as gr
 import time
 
+#Title and description
+TITLE = "STEM Articles Chatbot"
+
+DESCRIPTION = """
+
+This is a Llama 2 Chatbot that enables users to search through an Elasticsearch
+database of over 50,000 STEM Articles returning the most relevant one based on
+your query.
+
+"""
+
+CSS = ".svelte-1ed2p3z p {font-size: 20px}"
 
 ##Elasticsearch Constants
 ELASTIC_PASSWORD = "PPU90SH8Bt6kF3feQ3YpCqmM"
@@ -31,14 +43,12 @@ DB = ElasticsearchStore(
 #LLM models memory
 main_memory = ConversationBufferMemory()
 
-
 #LLM configurations
-#model should be in the same directory as app.py
 model = "mistral-7b-instruct-v0.1.Q8_0.gguf"
 callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
-n_gpu_layers = 62
-n_batch = 512 
-n_ctx=4096
+n_gpu_layers = 100
+n_batch = 512
+n_ctx= 4096
 temperature = 0
 
 llm = LlamaCpp(
@@ -62,9 +72,11 @@ def isRelevant(message):
         [INST] <<SYS>>
             Answer the following question with only a one word answer either "TRUE" or "FALSE".
             Answer "FALSE" if the user prompt is relevant to STEM(Science, Technology, Engineering and Math).
-            Answer "TRUE"if the user prompt is relevant to STEM(Science, Technology, Engineering and Math).
+            Answer "TRUE" if the user prompt is relevant to STEM(Science, Technology, Engineering and Math).
+            Answer "TRUE" if ask a question that is relevant to either Science, Technology, Engineering or Math
+            Take into account typos.
         <</SYS>>
-        {message}[/INST]
+        User Prompt: {message}[/INST]
     """
     
     isRelevantPrompt = PromptTemplate(
@@ -83,11 +95,10 @@ def isRelevant(message):
     
     response = chain.run(content)
 
-    if "TRUE" in response:
+    if "TRUE" in response.upper():
         return True
     else:
         return False
-
 
 #The function checks if user input is a follow up question
 def isfollowUp(message, history):
@@ -96,25 +107,38 @@ def isfollowUp(message, history):
     #Formating the conversation history to be more readable for the llm
     for exchange in history:
         user, chatbot = exchange
-        conversation+= f"User: {user}\nChatbot: {chatbot}\n"
+        conversation+= f"User: {user}\n {chatbot}\n"
 
-
+    sFollowUpTemplate = """
+        [INST] <<SYS>>
+        Your job is to determine whether the user prompt is follow-up question or a prompt relevant to article being discussed.
+        Please give a simple answer: "TRUE" or "FALSE".
+        Article: [{article}].
+        Chat History = "{conversation}".
+        Say "FALSE" if user prompt is a new topic.
+        Say "FALSE" if user ask something about a different topic.
+        Say "TRUE" if user asks something about the same article topic.
+        Say "TRUE" if user prompt is kind of query about article.
+        <</SYS>>
+        User prompt: {message}[/INST]
+    """
+    
     isFollowUpTemplate = """
         [INST] <<SYS>>
         Your job is to determine whether the user prompt is follow-up question or a prompt relevant to article being discussed.
         Please give a simple answer: "TRUE" or "FALSE".
         Article: [{article}].
         Chat History = "{conversation}".
-        Say "FALSE" if prompt is a new topic.
-        Say "TRUE" if prompt asks something about the same article topic.
-        Say "TRUE" if prompt is anytime of query about the same article.
+        Say "FALSE" if new user prompt is a new topic.
+        Say "FALSE" if new user prompt is irrelevant to current conversation.
+        Say "TRUE" if new user prompt asks something about the same article topic.
+        Say "TRUE" if new user prompt is anytype of query about the same article.
         <</SYS>>
-        {message}
+        Here is the new user prompt: {message}.
         [/INST]
     """
 
 
-    
     isFollowUpPrompt = PromptTemplate(
         input_variables=["conversation", "message", "article"], template=isFollowUpTemplate
     )
@@ -156,7 +180,6 @@ def elasticSearch(query):
     article = "Null"
     return article 
 
-
 #This function handles follow questions
 def followUpCompletion(message):
     global last_completion_type
@@ -190,7 +213,6 @@ def followUpCompletion(message):
     last_completion_type = "followUp"
     response = llm_chain.run(content)
     return response
-
 
 #This function handles standalone questions 
 def standaloneCompletion(message):
@@ -236,10 +258,8 @@ def standaloneCompletion(message):
     response = llm_chain.run(content)
     return response
 
-
 #This function handles general inputs
 def generalCompletion(message):
-
     global last_completion_type
 
     generalTemplate = """
@@ -272,8 +292,6 @@ def generalCompletion(message):
     response = llm_chain.run(content)
     return response
 
-
-
 def chatCompletion(message, history):
 
     #if history is larger than 0 then check if the input is a follow up question or standalone question
@@ -301,6 +319,7 @@ def chatCompletion(message, history):
         elasticSearch(message)
         return standaloneCompletion(message)
     
+    #Else run the general chat completion
     return generalCompletion(message)
 
 
@@ -309,7 +328,8 @@ def main(message, history):
     response = chatCompletion(message, history)
 
     for i in range(len(response)):
-        time.sleep(0.0001)
+        time.sleep(0.001)
         yield "Assistant: " + response[: i+1]
-    
-gr.ChatInterface(main).queue().launch()
+
+
+gr.ChatInterface(main, title=TITLE, description=DESCRIPTION, css=CSS).queue().launch()
